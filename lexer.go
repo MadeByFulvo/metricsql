@@ -522,6 +522,14 @@ func scanSpecialIntegerPrefix(s string) (skipChars int, isHex bool) {
 		return 0, false
 	}
 	if isDecimalChar(s[0]) {
+		// If any digit in the number contains 8 or 9, it cannot be octal -
+		// parse it as decimal number with a leading zero, like Prometheus/Mimir
+		// do (see victoria-metrics#11621).
+		for i := 0; i < len(s) && isDecimalChar(s[i]); i++ {
+			if s[i] >= '8' {
+				return 0, false
+			}
+		}
 		// octal number: 0123
 		return 1, false
 	}
