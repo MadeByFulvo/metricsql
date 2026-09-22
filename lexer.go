@@ -166,7 +166,13 @@ func parsePositiveNumber(s string) (float64, error) {
 	if isSpecialIntegerPrefix(s) {
 		n, err := strconv.ParseInt(s, 0, 64)
 		if err != nil {
-			return 0, err
+			if _, floatErr := strconv.ParseFloat(strings.ToLower(s), 64); floatErr != nil {
+				return 0, err
+			}
+			// A number with a leading zero, such as 09.5 or 07e8, is not
+			// valid for base-0 ParseInt. Parse it as decimal, like
+			// Prometheus/Mimir do (see victoria-metrics#11621).
+			return parsePositiveFloat(strings.ToLower(s))
 		}
 		return float64(n), nil
 	}
@@ -227,6 +233,14 @@ func parsePositiveNumber(s string) (float64, error) {
 		return 0, err
 	}
 	return v * m, nil
+}
+
+func parsePositiveFloat(s string) (float64, error) {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, err
+	}
+	return v, nil
 }
 
 func scanPositiveNumber(s string) (string, error) {
@@ -522,13 +536,10 @@ func scanSpecialIntegerPrefix(s string) (skipChars int, isHex bool) {
 		return 0, false
 	}
 	if isDecimalChar(s[0]) {
-		// If any digit in the number contains 8 or 9, it cannot be octal -
-		// parse it as decimal number with a leading zero, like Prometheus/Mimir
-		// do (see victoria-metrics#11621).
-		for i := 0; i < len(s) && isDecimalChar(s[i]); i++ {
-			if s[i] >= '8' {
-				return 0, false
-			}
+		if s[0] >= '8' {
+			// 08 and 09 are not valid octal digits - parse as decimal number
+			// with a leading zero, like Prometheus/Mimir do (see victoria-metrics#11621).
+			return 0, false
 		}
 		// octal number: 0123
 		return 1, false
